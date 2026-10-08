@@ -1,0 +1,11 @@
+[Unit]
+Description=Match Omarchy theme colors to the active wallpaper
+After=graphical-session.target
+
+[Service]
+ExecStart=%h/.local/bin/wallpaper-colors-watch
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

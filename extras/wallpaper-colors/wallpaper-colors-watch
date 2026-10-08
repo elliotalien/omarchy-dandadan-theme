@@ -1,0 +1,48 @@
+#!/bin/bash
+# Recolors the active Omarchy theme to match its current wallpaper.
+# Only runs for themes that opt in with a .wallpaper-colors file in
+# ~/.config/omarchy/themes/<theme>/.
+
+STATE_DIR="$HOME/.local/state/omarchy/current"
+BG_LINK="$STATE_DIR/background"
+THEME_NAME_FILE="$STATE_DIR/theme.name"
+USER_THEMES="$HOME/.config/omarchy/themes"
+CACHE="$HOME/.cache/omarchy/wallpaper-colors"
+GENERATOR="$HOME/.local/bin/wallpaper-colors-gen"
+
+apply_palette() {
+  [[ -f $THEME_NAME_FILE && -L $BG_LINK ]] || return 0
+
+  local theme theme_dir bg key colors bar
+  theme=$(cat "$THEME_NAME_FILE")
+  theme_dir="$USER_THEMES/$theme"
+  [[ -f $theme_dir/.wallpaper-colors ]] || return 0
+
+  bg=$(readlink -f "$BG_LINK") || return 0
+  [[ -f $bg ]] || return 0
+
+  key=$(sha1sum <<<"$(basename "$bg"):$(stat -c %s "$bg")" | cut -c1-16)
+  colors="$CACHE/$key.colors.toml"
+  bar="$CACHE/$key.bar.toml"
+
+  if [[ ! -f $colors ]]; then
+    mkdir -p "$CACHE"
+    "$GENERATOR" "$bg" "$colors" "$bar" || return 0
+  fi
+
+  if ! cmp -s "$colors" "$theme_dir/colors.toml" ||
+     { [[ -f $bar ]] && ! cmp -s "$bar" "$theme_dir/shell.bar.toml"; }; then
+    cp "$colors" "$theme_dir/colors.toml"
+    [[ -f $bar ]] && cp "$bar" "$theme_dir/shell.bar.toml"
+    omarchy theme refresh >/dev/null 2>&1 || true
+  fi
+}
+
+apply_palette
+
+inotifywait -m -q -e create -e delete -e moved_to --format '%f' "$STATE_DIR" |
+  while read -r name; do
+    [[ $name == background ]] || continue
+    sleep 0.3
+    apply_palette
+  done
